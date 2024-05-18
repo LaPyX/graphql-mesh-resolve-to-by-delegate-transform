@@ -28,7 +28,8 @@ Add the following paths configuration under the compilerOptions in your tsconfig
 {
   "compilerOptions": {
     "paths": {
-       "resolve-to-by-delegate": ["node_modules/@dmamontov/graphql-mesh-resolve-to-by-delegate-transform"]
+       "resolve-to-by-stitch": ["./node_modules/@dmamontov/graphql-mesh-resolve-to-by-stitch-transform"],
+       "resolve-to-by-delegate": ["./node_modules/@dmamontov/graphql-mesh-resolve-to-by-delegate-transform"]
     }
   }
 }
@@ -40,6 +41,7 @@ You need to include the Resolve To By Delegate Transform in your GraphQL Mesh co
 
 ```yaml
 transforms:
+  - resolveToByStitch: true
   - resolveToByDelegate: true
 
 additionalTypeDefs:
