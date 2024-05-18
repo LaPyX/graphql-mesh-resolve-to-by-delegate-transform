@@ -1,0 +1,27 @@
+scalar ResolveToBySourceArgs
+
+enum ResolveToByDirection {
+    desc
+    asc
+}
+
+directive @resolveToBy(
+    condition: String
+    requiredSelectionSet: String
+    sourceName: String!
+    sourceTypeName: String!
+    sourceFieldName: String!
+    sourceSelectionSet: String
+    sourceArgs: ResolveToBySourceArgs
+    keyField: String
+    keysArg: String
+    pubsubTopic: String
+    additionalArgs: ResolveToBySourceArgs
+    result: String
+    resultType: String
+    filterBy: String
+    orderByPath: String
+    orderByDirection: ResolveToByDirection
+    uniqueByPath: String
+    hoistPath: String
+) repeatable on FIELD_DEFINITION

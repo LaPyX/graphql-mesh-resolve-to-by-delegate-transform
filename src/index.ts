@@ -1,0 +1,500 @@
+import { dset } from 'dset';
+import {
+    getNamedType,
+    isAbstractType,
+    isInterfaceType,
+    isObjectType,
+    Kind,
+    type GraphQLFieldConfig,
+    type GraphQLObjectType,
+    type GraphQLSchema,
+    type SelectionSetNode,
+} from 'graphql';
+import lodashGet from 'lodash.get';
+import lodashSortBy from 'lodash.sortby';
+import toPath from 'lodash.topath';
+import lodashUniqBy from 'lodash.uniqby';
+import { mergeSelectionSets } from '@graphql-codegen/visitor-plugin-common';
+import { stringInterpolator } from '@graphql-mesh/string-interpolation';
+import { type StitchingInfo, type Transform } from '@graphql-tools/delegate';
+import { mergeResolvers } from '@graphql-tools/merge';
+import { addResolversToSchema } from '@graphql-tools/schema';
+import { MapperKind, mapSchema, parseSelectionSet, type IResolvers } from '@graphql-tools/utils';
+import { addStitchingInfo, completeStitchingInfo } from './stitchingInfo';
+import {
+    type ResolveToByCondition,
+    type ResolveToByConditionResolver,
+    type ResolveToByConditionResolverArgs,
+} from './types';
+import {
+    deeplySetArgs,
+    generateValuesFromResults,
+    getTypeByPath,
+    NotFoundError,
+    parseLiteral,
+    stringifySelectionSet,
+} from './utils';
+import { withFilter } from './withFilter';
+
+export default class ResolveToByDelegateTransform implements Transform {
+    public noWrap: boolean = true;
+
+    transformSchema(originalWrappingSchema: GraphQLSchema) {
+        if (!Object.keys(originalWrappingSchema.extensions).includes('stitchingInfo')) {
+            return originalWrappingSchema;
+        }
+
+        const toResolve: ResolveToByCondition[] = [];
+
+        let newSchema = mapSchema(originalWrappingSchema, {
+            [MapperKind.COMPOSITE_FIELD]: (
+                fieldConfig: GraphQLFieldConfig<any, any>,
+                fieldName: string,
+                typeName: string,
+            ) => {
+                if (
+                    !fieldConfig.astNode?.directives ||
+                    (fieldConfig.extensions &&
+                        Object.keys(fieldConfig.extensions).includes('conditionResolvers'))
+                ) {
+                    return fieldConfig;
+                }
+
+                const directives = fieldConfig.astNode.directives.filter(
+                    node => node.name.value === 'resolveToBy',
+                );
+                if (!directives.length) {
+                    return fieldConfig;
+                }
+
+                const resolvers: ResolveToByConditionResolver[] = [];
+                for (const directive of directives) {
+                    const args: Record<string, any> = {};
+                    for (const arg of directive.arguments) {
+                        args[arg.name.value] = parseLiteral(arg.value);
+                    }
+
+                    resolvers.push({
+                        args: {
+                            ...args,
+                            targetTypeName: typeName,
+                            targetFieldName: fieldName,
+                            targetFieldNodeType: fieldConfig.astNode.type.kind,
+                        } as ResolveToByConditionResolverArgs,
+                        options: {},
+                    });
+                }
+
+                toResolve.push({
+                    typeName,
+                    fieldName,
+                    fieldNodeType: fieldConfig.astNode.type.kind,
+                    resolvers,
+                });
+
+                return {
+                    ...fieldConfig,
+                    extensions: {
+                        ...fieldConfig.extensions,
+                        conditionResolvers: resolvers,
+                    },
+                };
+            },
+        });
+
+        if (toResolve.length > 0) {
+            const resolvers = this.buildResolvers(toResolve);
+            if (!resolvers) {
+                return originalWrappingSchema;
+            }
+
+            newSchema = addResolversToSchema({
+                schema: newSchema,
+                resolvers,
+            });
+
+            const stitchingInfo = completeStitchingInfo(
+                newSchema.extensions.stitchingInfo as StitchingInfo,
+                resolvers,
+                newSchema,
+            );
+
+            addStitchingInfo(newSchema, stitchingInfo);
+        }
+
+        return newSchema;
+    }
+
+    private buildResolvers(toResolve: ResolveToByCondition[]): IResolvers | undefined {
+        const resolvers: IResolvers[] = [];
+
+        for (const resolveArgs of toResolve) {
+            let selectionsSet: SelectionSetNode | undefined;
+            for (const resolver of resolveArgs.resolvers) {
+                if (resolver.args.result) {
+                    resolver.options.valuesFromResults = generateValuesFromResults(
+                        resolver.args.result,
+                    );
+                }
+
+                if (!resolver.args?.requiredSelectionSet && !resolver.args?.keyField) {
+                    continue;
+                }
+
+                if (selectionsSet) {
+                    selectionsSet = mergeSelectionSets(
+                        selectionsSet,
+                        parseSelectionSet(
+                            resolver.args.requiredSelectionSet || `{ ${resolver.args.keyField} }`,
+                        ),
+                    );
+                } else {
+                    selectionsSet = parseSelectionSet(
+                        resolver.args.requiredSelectionSet || `{ ${resolver.args.keyField} }`,
+                    );
+                }
+            }
+
+            resolvers.push({
+                [resolveArgs.typeName]: {
+                    [resolveArgs.fieldName]: {
+                        selectionSet: stringifySelectionSet(selectionsSet),
+                        subscribe: async (root, args, context, info) => {
+                            for (const resolver of resolveArgs.resolvers) {
+                                if (resolver.args.condition) {
+                                    const conditionFn = new Function(
+                                        'root',
+                                        'args',
+                                        'context',
+                                        'env',
+                                        'return ' + resolver.args.condition,
+                                    );
+
+                                    if (!conditionFn(root, args, context, process.env)) {
+                                        continue;
+                                    }
+                                }
+
+                                return withFilter(
+                                    (root, args, context, info) => {
+                                        const resolverData = {
+                                            root,
+                                            args,
+                                            context,
+                                            info,
+                                            env: process.env,
+                                        };
+                                        const topic = stringInterpolator.parse(
+                                            resolver.args.pubsubTopic,
+                                            resolverData,
+                                        );
+                                        return context.pubsub.asyncIterator(
+                                            topic,
+                                        ) as AsyncIterableIterator<any>;
+                                    },
+                                    (root, args, context, info) => {
+                                        return resolver.args.filterBy
+                                            ? new Function(`return ${resolver.args.filterBy}`)()
+                                            : true;
+                                    },
+                                )(root, args, context, info);
+                            }
+
+                            return undefined;
+                        },
+                        resolve: async (root: any, args: any, context: any, info: any) => {
+                            for (const resolver of resolveArgs.resolvers) {
+                                if (!context[resolver.args.sourceName]) {
+                                    throw new NotFoundError(
+                                        `No source found named "${resolver.args.sourceName}"`,
+                                        [resolveArgs.fieldName],
+                                    );
+                                }
+
+                                if (
+                                    !context[resolver.args.sourceName][resolver.args.sourceTypeName]
+                                ) {
+                                    throw new NotFoundError(
+                                        `No root type found named "${resolver.args.sourceTypeName}" exists in the source ${resolver.args.sourceName}\n` +
+                                            `It should be one of the following; ${Object.keys(
+                                                context[resolver.args.sourceName],
+                                            ).join(',')})}}`,
+                                        [resolveArgs.fieldName],
+                                    );
+                                }
+
+                                if (
+                                    !context[resolver.args.sourceName][
+                                        resolver.args.sourceTypeName
+                                    ][resolver.args.sourceFieldName]
+                                ) {
+                                    throw new NotFoundError(
+                                        `No field named "${resolver.args.sourceFieldName}" exists in the type ${resolver.args.sourceTypeName} from the source ${resolver.args.sourceName}`,
+                                        [resolveArgs.fieldName],
+                                    );
+                                }
+
+                                if (resolver.args.condition) {
+                                    const conditionFn = new Function(
+                                        'root',
+                                        'args',
+                                        'context',
+                                        'env',
+                                        'return ' + resolver.args.condition,
+                                    );
+
+                                    if (!conditionFn(root, args, context, process.env)) {
+                                        continue;
+                                    }
+                                }
+
+                                if (resolver.args.pubsubTopic) {
+                                    if (resolver.options.valuesFromResults) {
+                                        return resolver.options.valuesFromResults(root);
+                                    }
+
+                                    return root;
+                                }
+
+                                if (!resolver.options.selectionSet) {
+                                    resolver.options.selectionSet =
+                                        this.generateSelectionSetFactory(info.schema, resolver);
+                                }
+
+                                const resolverData = {
+                                    root,
+                                    args,
+                                    context,
+                                    info,
+                                    env: process.env,
+                                };
+                                const targetArgs: any = {};
+                                let options: any = {};
+
+                                if (resolver.args.keysArg) {
+                                    for (const argPath in resolver.args.additionalArgs || {}) {
+                                        dset(
+                                            targetArgs,
+                                            argPath,
+                                            stringInterpolator.parse(
+                                                resolver.args.additionalArgs[argPath],
+                                                resolverData,
+                                            ),
+                                        );
+                                    }
+
+                                    options = {
+                                        ...resolver.options,
+                                        root,
+                                        context,
+                                        info,
+                                        argsFromKeys: (keys: string[]) => {
+                                            const args: any = {};
+                                            dset(args, resolver.args.keysArg, keys);
+                                            Object.assign(args, targetArgs);
+                                            return args;
+                                        },
+                                        key: lodashGet(root, resolver.args.keyField),
+                                    };
+                                } else {
+                                    deeplySetArgs(
+                                        resolverData,
+                                        { targetArgs },
+                                        'targetArgs',
+                                        resolver.args.sourceArgs,
+                                    );
+
+                                    options = {
+                                        ...resolver.options,
+                                        root,
+                                        args: targetArgs,
+                                        context,
+                                        info,
+                                    };
+                                }
+
+                                return context[resolver.args.sourceName][
+                                    resolver.args.sourceTypeName
+                                ]
+                                    [resolver.args.sourceFieldName](options)
+                                    .then((result: any) => {
+                                        if (!result || result instanceof Error) {
+                                            return result;
+                                        }
+
+                                        if (
+                                            !Array.isArray(result) &&
+                                            resolveArgs.fieldNodeType === Kind.LIST_TYPE
+                                        ) {
+                                            result = [result];
+                                        }
+
+                                        if (resolver.args.filterBy) {
+                                            const filterByFn = new Function(
+                                                'result',
+                                                'root',
+                                                'args',
+                                                'context',
+                                                'env',
+                                                'return ' + resolver.args.filterBy,
+                                            );
+
+                                            if (Array.isArray(result)) {
+                                                result = result.filter(data =>
+                                                    filterByFn(
+                                                        data,
+                                                        root,
+                                                        args,
+                                                        context,
+                                                        process.env,
+                                                    ),
+                                                );
+                                            } else if (
+                                                !filterByFn(
+                                                    result,
+                                                    root,
+                                                    args,
+                                                    context,
+                                                    process.env,
+                                                )
+                                            ) {
+                                                return resolveArgs.fieldNodeType === Kind.LIST_TYPE
+                                                    ? []
+                                                    : undefined;
+                                            }
+                                        }
+
+                                        if (Array.isArray(result)) {
+                                            if (resolver.args.orderByPath) {
+                                                result = lodashSortBy(
+                                                    result,
+                                                    (element: any) =>
+                                                        lodashGet(
+                                                            element,
+                                                            resolver.args.orderByPath,
+                                                        ),
+                                                    [resolver.args.orderByDirection],
+                                                );
+                                            }
+
+                                            if (resolver.args.uniqueByPath) {
+                                                result = lodashUniqBy(result, (element: any) =>
+                                                    lodashGet(element, resolver.args.uniqueByPath),
+                                                );
+                                            }
+                                        }
+
+                                        if (resolver.args.hoistPath) {
+                                            result = lodashGet(result, resolver.args.hoistPath);
+                                        }
+
+                                        return result;
+                                    });
+                            }
+
+                            return resolveArgs.fieldNodeType === Kind.LIST_TYPE ? [] : undefined;
+                        },
+                    },
+                },
+            });
+        }
+
+        return resolvers.length > 0 ? mergeResolvers(resolvers) : undefined;
+    }
+
+    private generateSelectionSetFactory(
+        schema: GraphQLSchema,
+        resolver: ResolveToByConditionResolver,
+    ) {
+        if (resolver.args.sourceSelectionSet) {
+            return () => parseSelectionSet(resolver.args.sourceSelectionSet);
+        }
+
+        if (resolver.args.result) {
+            const resultPath = toPath(resolver.args.result);
+
+            let abstractResultTypeName: string;
+
+            const sourceType = schema.getType(resolver.args.sourceTypeName) as GraphQLObjectType;
+            const sourceTypeFields = sourceType.getFields();
+            const sourceField = sourceTypeFields[resolver.args.sourceFieldName];
+            const resultFieldType = getTypeByPath(sourceField.type, resultPath);
+
+            if (isAbstractType(resultFieldType)) {
+                if (resolver.args.resultType) {
+                    abstractResultTypeName = resolver.args.resultType;
+                } else {
+                    const targetType = schema.getType(
+                        resolver.args.targetTypeName,
+                    ) as GraphQLObjectType;
+                    const targetTypeFields = targetType.getFields();
+                    const targetField = targetTypeFields[resolver.args.targetFieldName];
+                    const targetFieldType = getNamedType(targetField.type);
+                    abstractResultTypeName = targetFieldType?.name;
+                }
+                if (abstractResultTypeName !== resultFieldType.name) {
+                    const abstractResultType = schema.getType(abstractResultTypeName);
+                    if (
+                        (isInterfaceType(abstractResultType) || isObjectType(abstractResultType)) &&
+                        !schema.isSubType(resultFieldType, abstractResultType)
+                    ) {
+                        throw new Error(
+                            `${resolver.args.sourceTypeName}.${
+                                resolver.args.sourceFieldName
+                            }.${resultPath.join('.')} doesn't implement ${abstractResultTypeName}.}`,
+                        );
+                    }
+                }
+            }
+
+            return (subtree: SelectionSetNode) => {
+                let finalSelectionSet = subtree;
+                let isLastResult = true;
+                const resultPathReversed = [...resultPath].reverse();
+                for (const pathElem of resultPathReversed) {
+                    if (Number.isNaN(parseInt(pathElem))) {
+                        if (
+                            isLastResult &&
+                            abstractResultTypeName &&
+                            abstractResultTypeName !== resultFieldType.name
+                        ) {
+                            finalSelectionSet = {
+                                kind: Kind.SELECTION_SET,
+                                selections: [
+                                    {
+                                        kind: Kind.INLINE_FRAGMENT,
+                                        typeCondition: {
+                                            kind: Kind.NAMED_TYPE,
+                                            name: {
+                                                kind: Kind.NAME,
+                                                value: abstractResultTypeName,
+                                            },
+                                        },
+                                        selectionSet: finalSelectionSet,
+                                    },
+                                ],
+                            };
+                        }
+                        finalSelectionSet = {
+                            kind: Kind.SELECTION_SET,
+                            selections: [
+                                {
+                                    kind: Kind.FIELD,
+                                    name: {
+                                        kind: Kind.NAME,
+                                        value: pathElem,
+                                    },
+                                    selectionSet: finalSelectionSet,
+                                },
+                            ],
+                        };
+                        isLastResult = false;
+                    }
+                }
+                return finalSelectionSet;
+            };
+        }
+
+        return undefined;
+    }
+}
