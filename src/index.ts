@@ -406,8 +406,9 @@ export default class ResolveToByDelegateTransform implements Transform {
         schema: GraphQLSchema,
         resolver: ResolveToByConditionResolver,
     ) {
+        let sourceSelectionSet: SelectionSetNode | undefined;
         if (resolver.args.sourceSelectionSet) {
-            return () => parseSelectionSet(resolver.args.sourceSelectionSet);
+            sourceSelectionSet = parseSelectionSet(resolver.args.sourceSelectionSet);
         }
 
         if (resolver.args.result) {
@@ -449,6 +450,10 @@ export default class ResolveToByDelegateTransform implements Transform {
 
             return (subtree: SelectionSetNode) => {
                 let finalSelectionSet = subtree;
+                if (sourceSelectionSet) {
+                    finalSelectionSet = mergeSelectionSets(sourceSelectionSet, finalSelectionSet);
+                }
+
                 let isLastResult = true;
                 const resultPathReversed = [...resultPath].reverse();
                 for (const pathElem of resultPathReversed) {
@@ -495,6 +500,12 @@ export default class ResolveToByDelegateTransform implements Transform {
             };
         }
 
-        return undefined;
+        return (subtree: SelectionSetNode) => {
+            if (sourceSelectionSet) {
+                return mergeSelectionSets(sourceSelectionSet, subtree);
+            }
+
+            return subtree;
+        };
     }
 }
