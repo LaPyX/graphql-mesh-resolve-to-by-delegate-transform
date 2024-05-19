@@ -28,7 +28,6 @@ import {
 } from './types';
 import {
     deeplySetArgs,
-    generateValuesFromResults,
     getTypeByPath,
     NotFoundError,
     parseLiteral,
@@ -131,12 +130,6 @@ export default class ResolveToByDelegateTransform implements Transform {
         for (const resolveArgs of toResolve) {
             let selectionsSet: SelectionSetNode | undefined;
             for (const resolver of resolveArgs.resolvers) {
-                if (resolver.args.result) {
-                    resolver.options.valuesFromResults = generateValuesFromResults(
-                        resolver.args.result,
-                    );
-                }
-
                 if (!resolver.args?.requiredSelectionSet && !resolver.args?.keyField) {
                     continue;
                 }
@@ -248,6 +241,14 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     }
                                 }
 
+                                resolver.options.valuesFromResults = this.generateValuesFromResults(
+                                    resolver,
+                                    resolveArgs,
+                                    root,
+                                    args,
+                                    context,
+                                );
+
                                 if (resolver.args.pubsubTopic) {
                                     if (resolver.options.valuesFromResults) {
                                         return resolver.options.valuesFromResults(root);
@@ -315,81 +316,7 @@ export default class ResolveToByDelegateTransform implements Transform {
 
                                 return context[resolver.args.sourceName][
                                     resolver.args.sourceTypeName
-                                ]
-                                    [resolver.args.sourceFieldName](options)
-                                    .then((result: any) => {
-                                        if (!result || result instanceof Error) {
-                                            return result;
-                                        }
-
-                                        if (
-                                            !Array.isArray(result) &&
-                                            resolveArgs.fieldNodeType === Kind.LIST_TYPE
-                                        ) {
-                                            result = [result];
-                                        }
-
-                                        if (resolver.args.filterBy) {
-                                            const filterByFn = new Function(
-                                                'result',
-                                                'root',
-                                                'args',
-                                                'context',
-                                                'env',
-                                                'return ' + resolver.args.filterBy,
-                                            );
-
-                                            if (Array.isArray(result)) {
-                                                result = result.filter(data =>
-                                                    filterByFn(
-                                                        data,
-                                                        root,
-                                                        args,
-                                                        context,
-                                                        process.env,
-                                                    ),
-                                                );
-                                            } else if (
-                                                !filterByFn(
-                                                    result,
-                                                    root,
-                                                    args,
-                                                    context,
-                                                    process.env,
-                                                )
-                                            ) {
-                                                return resolveArgs.fieldNodeType === Kind.LIST_TYPE
-                                                    ? []
-                                                    : undefined;
-                                            }
-                                        }
-
-                                        if (Array.isArray(result)) {
-                                            if (resolver.args.orderByPath) {
-                                                result = lodashSortBy(
-                                                    result,
-                                                    (element: any) =>
-                                                        lodashGet(
-                                                            element,
-                                                            resolver.args.orderByPath,
-                                                        ),
-                                                    [resolver.args.orderByDirection],
-                                                );
-                                            }
-
-                                            if (resolver.args.uniqueByPath) {
-                                                result = lodashUniqBy(result, (element: any) =>
-                                                    lodashGet(element, resolver.args.uniqueByPath),
-                                                );
-                                            }
-                                        }
-
-                                        if (resolver.args.hoistPath) {
-                                            result = lodashGet(result, resolver.args.hoistPath);
-                                        }
-
-                                        return result;
-                                    });
+                                ][resolver.args.sourceFieldName](options);
                             }
 
                             return resolveArgs.fieldNodeType === Kind.LIST_TYPE ? [] : undefined;
@@ -400,6 +327,78 @@ export default class ResolveToByDelegateTransform implements Transform {
         }
 
         return resolvers.length > 0 ? mergeResolvers(resolvers) : undefined;
+    }
+
+    private generateValuesFromResults(
+        resolver: ResolveToByConditionResolver,
+        resolveArgs: ResolveToByCondition,
+        root: any,
+        args: any,
+        context: any,
+    ) {
+        const valuesFromResults = (result: any): any => {
+            if (!result || result instanceof Error) {
+                return result;
+            }
+
+            if (resolver.args.filterBy) {
+                const filterByFn = new Function(
+                    'result',
+                    'root',
+                    'args',
+                    'context',
+                    'env',
+                    'return ' + resolver.args.filterBy,
+                );
+
+                if (Array.isArray(result)) {
+                    result = result.filter(data =>
+                        filterByFn(data, root, args, context, process.env),
+                    );
+                } else if (!filterByFn(result, root, args, context, process.env)) {
+                    return resolveArgs.fieldNodeType === Kind.LIST_TYPE ? [] : undefined;
+                }
+            }
+
+            if (Array.isArray(result)) {
+                if (resolver.args.orderByPath) {
+                    result = lodashSortBy(
+                        result,
+                        (element: any) => lodashGet(element, resolver.args.orderByPath),
+                        [resolver.args.orderByDirection],
+                    );
+                }
+
+                if (resolver.args.uniqueByPath) {
+                    result = lodashUniqBy(result, (element: any) =>
+                        lodashGet(element, resolver.args.uniqueByPath),
+                    );
+                }
+            }
+
+            if (resolver.args.result) {
+                const path = toPath(resolver.args.result);
+                if (Number.isNaN(Number(path[0])) && Array.isArray(result)) {
+                    result = result.map(valuesFromResults);
+                } else {
+                    result = lodashGet(result, resolver.args.result);
+                }
+            }
+
+            if (resolver.args.hoistPath) {
+                result = lodashGet(result, resolver.args.hoistPath);
+            }
+
+            if (!Array.isArray(result) && resolveArgs.fieldNodeType === Kind.LIST_TYPE) {
+                result = [result];
+            } else if (Array.isArray(result) && resolveArgs.fieldNodeType !== Kind.LIST_TYPE) {
+                result = result.length > 0 ? result[0] : undefined;
+            }
+
+            return result;
+        };
+
+        return valuesFromResults;
     }
 
     private generateSelectionSetFactory(

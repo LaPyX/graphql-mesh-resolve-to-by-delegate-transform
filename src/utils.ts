@@ -12,7 +12,6 @@ import {
     type GraphQLType,
     type SelectionSetNode,
 } from 'graphql';
-import lodashGet from 'lodash.get';
 import { stringInterpolator } from '@graphql-mesh/string-interpolation';
 
 export const deeplySetArgs = (resolverData: any, args: object, path: string, value: any) => {
@@ -46,18 +45,6 @@ export const getTypeByPath = (type: GraphQLType, path: string[]): GraphQLNamedTy
         throw new Error(`${type.name}.${currentFieldName} is not a valid field.`);
     }
     return getTypeByPath(field.type, path.slice(1));
-};
-
-export const generateValuesFromResults = (resultExpression: string): ((result: any) => any) => {
-    const valuesFromResults = (result: any): any => {
-        if (Array.isArray(result)) {
-            return result.map(valuesFromResults);
-        }
-
-        return lodashGet(result, resultExpression);
-    };
-
-    return valuesFromResults;
 };
 
 export const stringifySelectionSet = (selectionSet?: SelectionSetNode): string | undefined => {
