@@ -24,4 +24,5 @@ directive @resolveToBy(
     orderByDirection: ResolveToByDirection
     uniqueByPath: String
     hoistPath: String
+    mergeBy: String
 ) repeatable on FIELD_DEFINITION

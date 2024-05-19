@@ -1,3 +1,5 @@
+import deepClean from 'clean-deep';
+import deepMerge from 'deepmerge';
 import { dset } from 'dset';
 import {
     getNamedType,
@@ -382,6 +384,20 @@ export default class ResolveToByDelegateTransform implements Transform {
                     result = lodashUniqBy(result, (element: any) =>
                         lodashGet(element, resolver.args.uniqueByPath),
                     );
+                }
+
+                if (resolver.args.mergeBy) {
+                    const mergedResult: Record<string, any> = {};
+                    for (const element of result) {
+                        const key = lodashGet(element, resolver.args.mergeBy)?.toString();
+                        if (key) {
+                            mergedResult[key] = Object.keys(mergedResult).includes(key)
+                                ? deepMerge(mergedResult[key], deepClean(element))
+                                : element;
+                        }
+                    }
+
+                    result = Object.values(mergedResult);
                 }
             }
 
