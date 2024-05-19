@@ -1,6 +1,6 @@
 {
   "name": "@dmamontov/graphql-mesh-resolve-to-by-delegate-transform",
-  "version": "1.0.4",
+  "version": "1.0.5",
   "author": "Dmitry Mamontov",
   "type": "module",
   "repository": {
