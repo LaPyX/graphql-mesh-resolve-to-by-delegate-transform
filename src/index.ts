@@ -341,6 +341,15 @@ export default class ResolveToByDelegateTransform implements Transform {
                 return result;
             }
 
+            if (resolver.args.result) {
+                const path = toPath(resolver.args.result);
+                if (Number.isNaN(Number(path[0])) && Array.isArray(result)) {
+                    result = result.map(valuesFromResults);
+                } else {
+                    result = lodashGet(result, resolver.args.result);
+                }
+            }
+
             if (resolver.args.filterBy) {
                 const filterByFn = new Function(
                     'result',
@@ -373,15 +382,6 @@ export default class ResolveToByDelegateTransform implements Transform {
                     result = lodashUniqBy(result, (element: any) =>
                         lodashGet(element, resolver.args.uniqueByPath),
                     );
-                }
-            }
-
-            if (resolver.args.result) {
-                const path = toPath(resolver.args.result);
-                if (Number.isNaN(Number(path[0])) && Array.isArray(result)) {
-                    result = result.map(valuesFromResults);
-                } else {
-                    result = lodashGet(result, resolver.args.result);
                 }
             }
 
