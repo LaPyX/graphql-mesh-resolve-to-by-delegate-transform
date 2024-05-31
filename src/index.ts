@@ -517,7 +517,7 @@ export default class ResolveToByDelegateTransform implements Transform {
             }
 
             return (subtree: SelectionSetNode) => {
-                stitchSelectionSet(subtree);
+                subtree = stitchSelectionSet(subtree);
 
                 let finalSelectionSet = subtree;
                 if (sourceSelectionSet) {
@@ -572,7 +572,7 @@ export default class ResolveToByDelegateTransform implements Transform {
         }
 
         return (subtree: SelectionSetNode) => {
-            stitchSelectionSet(subtree);
+            subtree = stitchSelectionSet(subtree);
             if (sourceSelectionSet) {
                 return mergeSelectionSets(sourceSelectionSet, subtree);
             }
