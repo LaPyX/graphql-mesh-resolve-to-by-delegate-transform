@@ -104,7 +104,7 @@ export default class ResolveToByDelegateTransform implements Transform {
         });
 
         if (toResolve.length > 0) {
-            const resolvers = this.buildResolvers(toResolve);
+            const resolvers = this.buildResolvers(toResolve, newSchema.extensions);
             if (!resolvers) {
                 return originalWrappingSchema;
             }
@@ -112,6 +112,8 @@ export default class ResolveToByDelegateTransform implements Transform {
             newSchema = addResolversToSchema({
                 schema: newSchema,
                 resolvers,
+                inheritResolversFromInterfaces: false,
+                updateResolversInPlace: true,
             });
 
             const stitchingInfo = completeStitchingInfo(
@@ -126,7 +128,10 @@ export default class ResolveToByDelegateTransform implements Transform {
         return newSchema;
     }
 
-    private buildResolvers(toResolve: ResolveToByCondition[]): IResolvers | undefined {
+    private buildResolvers(
+        toResolve: ResolveToByCondition[],
+        extensions: Record<string, any>,
+    ): IResolvers | undefined {
         const resolvers: IResolvers[] = [];
 
         for (const resolveArgs of toResolve) {
@@ -141,11 +146,13 @@ export default class ResolveToByDelegateTransform implements Transform {
                         selectionsSet,
                         parseSelectionSet(
                             resolver.args.requiredSelectionSet || `{ ${resolver.args.keyField} }`,
+                            { noLocation: true },
                         ),
                     );
                 } else {
                     selectionsSet = parseSelectionSet(
                         resolver.args.requiredSelectionSet || `{ ${resolver.args.keyField} }`,
+                        { noLocation: true },
                     );
                 }
             }
@@ -261,7 +268,11 @@ export default class ResolveToByDelegateTransform implements Transform {
 
                                 if (!resolver.options.selectionSet) {
                                     resolver.options.selectionSet =
-                                        this.generateSelectionSetFactory(info.schema, resolver);
+                                        this.generateSelectionSetFactory(
+                                            info.schema,
+                                            resolver,
+                                            extensions,
+                                        );
                                 }
 
                                 const resolverData = {
@@ -420,34 +431,76 @@ export default class ResolveToByDelegateTransform implements Transform {
     private generateSelectionSetFactory(
         schema: GraphQLSchema,
         resolver: ResolveToByConditionResolver,
+        extensions: Record<string, any>,
     ) {
         let sourceSelectionSet: SelectionSetNode | undefined;
         if (resolver.args.sourceSelectionSet) {
             sourceSelectionSet = parseSelectionSet(resolver.args.sourceSelectionSet);
         }
 
+        const sourceType = schema.getType(resolver.args.sourceTypeName) as GraphQLObjectType;
+        const sourceTypeFields = sourceType.getFields();
+        const sourceField = sourceTypeFields[resolver.args.sourceFieldName];
+        const sourceFieldNamedType = getNamedType(sourceField.type);
+        const abstractSourceTypeName = sourceFieldNamedType.name;
+
+        let abstractResultTypeName: string;
+        if (resolver.args.resultType) {
+            abstractResultTypeName = resolver.args.resultType;
+        } else {
+            const targetType = schema.getType(resolver.args.targetTypeName) as GraphQLObjectType;
+            const targetTypeFields = targetType.getFields();
+            const targetField = targetTypeFields[resolver.args.targetFieldName];
+            const targetFieldType = getNamedType(targetField.type);
+
+            abstractResultTypeName = targetFieldType.name;
+        }
+
+        const stitchSelectionSet = (subtree: SelectionSetNode): SelectionSetNode => {
+            if (
+                !extensions.stitchingInfo?.fieldNodesByField ||
+                (!Object.keys(extensions.stitchingInfo.fieldNodesByField).includes(
+                    abstractSourceTypeName,
+                ) &&
+                    !Object.keys(extensions.stitchingInfo.fieldNodesByField).includes(
+                        abstractResultTypeName,
+                    ))
+            ) {
+                return subtree;
+            }
+
+            const typeName = Object.keys(extensions.stitchingInfo.fieldNodesByField).includes(
+                abstractSourceTypeName,
+            )
+                ? abstractSourceTypeName
+                : abstractResultTypeName;
+            const stitchInfo = extensions.stitchingInfo?.fieldNodesByField[typeName];
+
+            if (!stitchInfo) {
+                return subtree;
+            }
+
+            let newSubTree = subtree;
+            for (const selection of subtree.selections) {
+                if (
+                    (selection as any)?.name?.value &&
+                    Object.keys(stitchInfo).includes((selection as any).name.value)
+                ) {
+                    (newSubTree.selections as any[]).push(
+                        stitchInfo[(selection as any).name.value],
+                    );
+                }
+            }
+
+            return newSubTree;
+        };
+
         if (resolver.args.result) {
             const resultPath = toPath(resolver.args.result);
 
-            let abstractResultTypeName: string;
-
-            const sourceType = schema.getType(resolver.args.sourceTypeName) as GraphQLObjectType;
-            const sourceTypeFields = sourceType.getFields();
-            const sourceField = sourceTypeFields[resolver.args.sourceFieldName];
             const resultFieldType = getTypeByPath(sourceField.type, resultPath);
 
             if (isAbstractType(resultFieldType)) {
-                if (resolver.args.resultType) {
-                    abstractResultTypeName = resolver.args.resultType;
-                } else {
-                    const targetType = schema.getType(
-                        resolver.args.targetTypeName,
-                    ) as GraphQLObjectType;
-                    const targetTypeFields = targetType.getFields();
-                    const targetField = targetTypeFields[resolver.args.targetFieldName];
-                    const targetFieldType = getNamedType(targetField.type);
-                    abstractResultTypeName = targetFieldType?.name;
-                }
                 if (abstractResultTypeName !== resultFieldType.name) {
                     const abstractResultType = schema.getType(abstractResultTypeName);
                     if (
@@ -464,6 +517,8 @@ export default class ResolveToByDelegateTransform implements Transform {
             }
 
             return (subtree: SelectionSetNode) => {
+                stitchSelectionSet(subtree);
+
                 let finalSelectionSet = subtree;
                 if (sourceSelectionSet) {
                     finalSelectionSet = mergeSelectionSets(sourceSelectionSet, finalSelectionSet);
@@ -476,6 +531,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                         if (
                             isLastResult &&
                             abstractResultTypeName &&
+                            isAbstractType(resultFieldType) &&
                             abstractResultTypeName !== resultFieldType.name
                         ) {
                             finalSelectionSet = {
@@ -516,6 +572,7 @@ export default class ResolveToByDelegateTransform implements Transform {
         }
 
         return (subtree: SelectionSetNode) => {
+            stitchSelectionSet(subtree);
             if (sourceSelectionSet) {
                 return mergeSelectionSets(sourceSelectionSet, subtree);
             }

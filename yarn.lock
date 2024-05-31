@@ -500,19 +500,6 @@
   dependencies:
     "@jridgewell/trace-mapping" "0.3.9"
 
-"@dmamontov/graphql-mesh-resolve-to-by-stitch-transform@*":
-  version "1.0.1"
-  resolved "https://registry.yarnpkg.com/@dmamontov/graphql-mesh-resolve-to-by-stitch-transform/-/graphql-mesh-resolve-to-by-stitch-transform-1.0.1.tgz#9121a215d4c794389c863ac360f57ce322d48449"
-  integrity sha512-11sjRdALycSM7mXEd6RXdOAgCm93+dK/cZxbU2I6D0Tt+z/OskQU9UTPhvFrvQwZ0FrGboGCFqpqOYyyMZyavg==
-  dependencies:
-    "@graphql-codegen/visitor-plugin-common" "^5.1.0"
-    "@graphql-mesh/types" "^0.97.5"
-    "@graphql-mesh/utils" "^0.97.5"
-    "@graphql-tools/delegate" "^10.0.4"
-    "@graphql-tools/utils" "^10.2.0"
-    "@graphql-tools/wrap" "^10.0.0"
-    graphql "*"
-
 "@eslint-community/eslint-utils@^4.1.2", "@eslint-community/eslint-utils@^4.2.0", "@eslint-community/eslint-utils@^4.4.0":
   version "4.4.0"
   resolved "https://registry.yarnpkg.com/@eslint-community/eslint-utils/-/eslint-utils-4.4.0.tgz#a23514e8fb9af1269d5f7788aa556798d61c6b59"
@@ -582,15 +569,6 @@
     json-pointer "0.6.2"
     lodash.get "4.4.2"
 
-"@graphql-mesh/types@^0.97.5":
-  version "0.97.5"
-  resolved "https://registry.yarnpkg.com/@graphql-mesh/types/-/types-0.97.5.tgz#c646059e5f22ac9cc18a32ec85f5a3033f552251"
-  integrity sha512-15dXHPsuQnhG3YUvkRXI7g4BuoN1rpoF2SIHQUbVWoboVgqme9lhWNqiSsK2oUHyTW1x1ksKKhV452UbMIyV0w==
-  dependencies:
-    "@graphql-tools/batch-delegate" "^9.0.0"
-    "@graphql-tools/delegate" "^10.0.0"
-    "@graphql-typed-document-node/core" "^3.2.0"
-
 "@graphql-mesh/utils@^0.97.5":
   version "0.97.5"
   resolved "https://registry.yarnpkg.com/@graphql-mesh/utils/-/utils-0.97.5.tgz#7b39e16e04bc3ad4ced15516b62bc1f73ac56c73"
@@ -605,7 +583,7 @@
     lodash.topath "^4.5.2"
     tiny-lru "^11.0.0"
 
-"@graphql-tools/batch-delegate@^9.0.0", "@graphql-tools/batch-delegate@^9.0.1":
+"@graphql-tools/batch-delegate@^9.0.1":
   version "9.0.2"
   resolved "https://registry.yarnpkg.com/@graphql-tools/batch-delegate/-/batch-delegate-9.0.2.tgz#d3ce63813f5796c9a13d64d5fd4c866aaf7ec838"
   integrity sha512-LMnHPO5vYSYGo0uFfkwJ91F9VWIRRMQGBt/Ff6E/YFnrHhE49711t0uyPlar511EytwpXxq3rGavXxX6bKy31A==
@@ -720,7 +698,7 @@
     dset "^3.1.2"
     tslib "^2.4.0"
 
-"@graphql-tools/wrap@^10.0.0", "@graphql-tools/wrap@^10.0.2", "@graphql-tools/wrap@^10.0.5":
+"@graphql-tools/wrap@^10.0.2", "@graphql-tools/wrap@^10.0.5":
   version "10.0.5"
   resolved "https://registry.yarnpkg.com/@graphql-tools/wrap/-/wrap-10.0.5.tgz#614b964a158887b4a644f5425b2b9a57b5751f72"
   integrity sha512-Cbr5aYjr3HkwdPvetZp1cpDWTGdD1Owgsb3z/ClzhmrboiK86EnQDxDvOJiQkDCPWE9lNBwj8Y4HfxroY0D9DQ==
@@ -731,7 +709,7 @@
     tslib "^2.4.0"
     value-or-promise "^1.0.12"
 
-"@graphql-typed-document-node/core@3.2.0", "@graphql-typed-document-node/core@^3.1.1", "@graphql-typed-document-node/core@^3.2.0":
+"@graphql-typed-document-node/core@3.2.0", "@graphql-typed-document-node/core@^3.1.1":
   version "3.2.0"
   resolved "https://registry.yarnpkg.com/@graphql-typed-document-node/core/-/core-3.2.0.tgz#5f3d96ec6b2354ad6d8a28bf216a1d97b5426861"
   integrity sha512-mB9oAsNCm9aM3/SOv4YtBMqZbYj10R7dkq8byBqxGY/ncFwhf2oQzMV+LCRlWoDSEBJ3COiR1yeDvMtsoOsuFQ==
