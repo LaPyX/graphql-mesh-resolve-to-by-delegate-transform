@@ -32,6 +32,7 @@ export interface ResolveToByConditionResolverArgs {
     uniqueByPath?: string;
     hoistPath?: string;
     mergeBy?: string;
+    asRoot?: boolean;
     targetTypeName: string;
     targetFieldName: string;
     targetFieldNodeType: Kind;

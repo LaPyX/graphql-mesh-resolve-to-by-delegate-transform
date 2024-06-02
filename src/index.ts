@@ -205,6 +205,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                             return undefined;
                         },
                         resolve: async (root: any, args: any, context: any, info: any) => {
+                            let rootPromise: Promise<any> | undefined;
                             for (const resolver of resolveArgs.resolvers) {
                                 if (!context[resolver.args.sourceName]) {
                                     throw new NotFoundError(
@@ -327,9 +328,45 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     };
                                 }
 
-                                return context[resolver.args.sourceName][
-                                    resolver.args.sourceTypeName
-                                ][resolver.args.sourceFieldName](options);
+                                const delegate =
+                                    context[resolver.args.sourceName][resolver.args.sourceTypeName][
+                                        resolver.args.sourceFieldName
+                                    ];
+
+                                if (resolver.args.asRoot) {
+                                    rootPromise = delegate(options);
+                                } else if (rootPromise instanceof Promise) {
+                                    return rootPromise.then(root => {
+                                        if (!root || root instanceof Error) {
+                                            return root;
+                                        }
+
+                                        const omptimizedRoot =
+                                            Array.isArray(root) && root.length > 0 ? root[0] : root;
+
+                                        if (resolver.args.keysArg) {
+                                            return delegate({
+                                                ...options,
+                                                root: omptimizedRoot,
+                                            });
+                                        }
+
+                                        deeplySetArgs(
+                                            { ...resolverData, root: omptimizedRoot },
+                                            { targetArgs },
+                                            'targetArgs',
+                                            resolver.args.sourceArgs,
+                                        );
+
+                                        return delegate({
+                                            ...options,
+                                            root: omptimizedRoot,
+                                            args: targetArgs,
+                                        });
+                                    });
+                                } else {
+                                    return delegate(options);
+                                }
                             }
 
                             return resolveArgs.fieldNodeType === Kind.LIST_TYPE ? [] : undefined;
@@ -521,7 +558,9 @@ export default class ResolveToByDelegateTransform implements Transform {
 
                 let finalSelectionSet = subtree;
                 if (sourceSelectionSet) {
-                    finalSelectionSet = mergeSelectionSets(sourceSelectionSet, finalSelectionSet);
+                    finalSelectionSet = resolver.args.asRoot
+                        ? sourceSelectionSet
+                        : mergeSelectionSets(sourceSelectionSet, finalSelectionSet);
                 }
 
                 let isLastResult = true;
@@ -574,7 +613,9 @@ export default class ResolveToByDelegateTransform implements Transform {
         return (subtree: SelectionSetNode) => {
             subtree = stitchSelectionSet(subtree);
             if (sourceSelectionSet) {
-                return mergeSelectionSets(sourceSelectionSet, subtree);
+                return resolver.args.asRoot
+                    ? sourceSelectionSet
+                    : mergeSelectionSets(sourceSelectionSet, subtree);
             }
 
             return subtree;

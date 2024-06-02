@@ -25,4 +25,5 @@ directive @resolveToBy(
     uniqueByPath: String
     hoistPath: String
     mergeBy: String
+    asRoot: Boolean
 ) repeatable on FIELD_DEFINITION
