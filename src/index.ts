@@ -523,9 +523,15 @@ export default class ResolveToByDelegateTransform implements Transform {
                     (selection as any)?.name?.value &&
                     Object.keys(stitchInfo).includes((selection as any).name.value)
                 ) {
-                    (newSubTree.selections as any[]).push(
-                        stitchInfo[(selection as any).name.value],
-                    );
+                    if (Array.isArray(stitchInfo[(selection as any).name.value])) {
+                        newSubTree.selections = newSubTree.selections.concat(
+                            stitchInfo[(selection as any).name.value],
+                        );
+                    } else {
+                        (newSubTree.selections as any[]).push(
+                            stitchInfo[(selection as any).name.value],
+                        );
+                    }
                 }
             }
 
