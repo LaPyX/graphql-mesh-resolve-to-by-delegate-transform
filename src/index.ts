@@ -336,13 +336,19 @@ export default class ResolveToByDelegateTransform implements Transform {
                                 if (resolver.args.asRoot) {
                                     rootPromise = delegate(options);
                                 } else if (rootPromise instanceof Promise) {
-                                    return rootPromise.then(root => {
-                                        if (!root || root instanceof Error) {
-                                            return root;
+                                    return rootPromise.then(newRoot => {
+                                        if (!newRoot || newRoot instanceof Error) {
+                                            return newRoot;
                                         }
 
-                                        const omptimizedRoot =
-                                            Array.isArray(root) && root.length > 0 ? root[0] : root;
+                                        let omptimizedRoot =
+                                            Array.isArray(newRoot) && newRoot.length > 0
+                                                ? newRoot[0]
+                                                : newRoot;
+
+                                        if (!Array.isArray(omptimizedRoot) && root) {
+                                            omptimizedRoot = Object.assign(root, omptimizedRoot);
+                                        }
 
                                         if (resolver.args.keysArg) {
                                             return delegate({
