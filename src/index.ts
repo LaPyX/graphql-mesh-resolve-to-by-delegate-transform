@@ -371,7 +371,9 @@ export default class ResolveToByDelegateTransform implements Transform {
                                         });
                                     });
                                 } else {
-                                    return delegate(options);
+                                    return delegate(options).then((entity: any) => {
+                                        return entity.isDeleted ? null : entity;
+                                    });
                                 }
                             }
 
@@ -392,7 +394,7 @@ export default class ResolveToByDelegateTransform implements Transform {
         args: any,
         context: any,
     ) {
-        const valuesFromResults = (result: any): any => {
+        const valuesFromResults = (result: any, keys: any): any => {
             if (!result || result instanceof Error) {
                 return result;
             }
@@ -461,6 +463,14 @@ export default class ResolveToByDelegateTransform implements Transform {
 
             if (!Array.isArray(result) && resolveArgs.fieldNodeType === Kind.LIST_TYPE) {
                 result = [result];
+            } else if (Array.isArray(result) && Array.isArray(keys) && resolver.args.keyField) {
+                return keys.map(
+                    key =>
+                        result.find(
+                            (relation: any) =>
+                                String(relation[resolver.args.keyField]) === String(key),
+                        ) || { [resolver.args.keyField]: key, isDeleted: true },
+                );
             } else if (Array.isArray(result) && resolveArgs.fieldNodeType !== Kind.LIST_TYPE) {
                 result = result.length > 0 ? result[0] : undefined;
             }
