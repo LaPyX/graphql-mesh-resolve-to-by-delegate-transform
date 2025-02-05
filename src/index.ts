@@ -372,7 +372,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     });
                                 } else {
                                     return delegate(options).then((entity: any) =>
-                                        entity.isSkipped ? null : entity,
+                                        entity.__is_deleted ? null : entity,
                                     );
                                 }
                             }
@@ -469,7 +469,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                         result.find(
                             (relation: any) =>
                                 String(relation[resolver.args.keyField]) === String(key),
-                        ) || { [resolver.args.keyField]: key, isSkipped: true },
+                        ) || { [resolver.args.keyField]: key, __is_deleted: true },
                 );
             } else if (Array.isArray(result) && resolveArgs.fieldNodeType !== Kind.LIST_TYPE) {
                 result = result.length > 0 ? result[0] : undefined;
