@@ -371,9 +371,9 @@ export default class ResolveToByDelegateTransform implements Transform {
                                         });
                                     });
                                 } else {
-                                    return delegate(options).then((entity: any) => {
-                                        return entity.isSkipped ? null : entity;
-                                    });
+                                    return delegate(options).then((entity: any) =>
+                                        entity.isSkipped ? null : entity,
+                                    );
                                 }
                             }
 
