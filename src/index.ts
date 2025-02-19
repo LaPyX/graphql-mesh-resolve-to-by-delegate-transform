@@ -372,7 +372,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     });
                                 } else {
                                     return delegate(options).then((entity: any) =>
-                                        entity.__is_deleted ? null : entity,
+                                        entity?.__is_deleted ? null : entity,
                                     );
                                 }
                             }
