@@ -237,6 +237,10 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     );
                                 }
 
+                                if (Object.keys(args || {}).length > 0 && Object.keys(context.rootArgs || {}).length === 0) {
+                                    context.rootArgs = args
+                                }
+
                                 if (resolver.args.condition) {
                                     const conditionFn = new Function(
                                         'root',
