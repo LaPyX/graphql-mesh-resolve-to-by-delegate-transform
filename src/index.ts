@@ -408,6 +408,10 @@ export default class ResolveToByDelegateTransform implements Transform {
                 }
             }
 
+            if (args?.input != undefined && Object.keys(args?.input).length > 0) {
+                context.args = args.input
+            }
+
             if (resolver.args.filterBy) {
                 const filterByFn = new Function(
                     'result',
