@@ -237,6 +237,10 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     );
                                 }
 
+                                if (Object.keys(args || {}).length > 0 && Object.keys(context.rootArgs || {}).length === 0) {
+                                    context.rootArgs = args
+                                }
+
                                 if (resolver.args.condition) {
                                     const conditionFn = new Function(
                                         'root',
@@ -406,10 +410,6 @@ export default class ResolveToByDelegateTransform implements Transform {
                 } else {
                     result = lodashGet(result, resolver.args.result);
                 }
-            }
-
-            if (args?.input != undefined && Object.keys(args?.input).length > 0) {
-                context.args = args.input
             }
 
             if (resolver.args.filterBy) {
