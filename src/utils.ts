@@ -12,26 +12,22 @@ import {
     type GraphQLType,
     type SelectionSetNode,
 } from 'graphql';
+import lodash from 'lodash';
 import { stringInterpolator } from '@graphql-mesh/string-interpolation';
 
 export const deeplySetArgs = (resolverData: any, args: object, path: string, value: any) => {
-    const resolveString = (str: string): any => {
-        return stringInterpolator.parse(str.toString(), resolverData);
-    };
-
     const resolveAny = (val: any): any => {
-        if (val === null || val === undefined) return val;
+        if (lodash.isNull(val) || lodash.isUndefined(val)) return val;
 
-        if (typeof val === 'string') return resolveString(val);
+        if (lodash.isString(val)) return stringInterpolator.parse(val, resolverData);
 
         if (Array.isArray(val)) return val.map(resolveAny);
 
-        if (typeof val === 'object') {
-            const out: Record<string, any> = {};
-            for (const key in val) {
-                out[key] = resolveAny(val[key]);
-            }
-            return out;
+        if (lodash.isObject(val)) {
+            return Object.keys(val).reduce((acc: object, key: string) => {
+                // @ts-expect-error
+                return { ...acc, [key]: resolveAny(val[key]) };
+            }, {});
         }
 
         return val;
