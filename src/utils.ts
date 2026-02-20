@@ -15,13 +15,29 @@ import {
 import { stringInterpolator } from '@graphql-mesh/string-interpolation';
 
 export const deeplySetArgs = (resolverData: any, args: object, path: string, value: any) => {
-    if (typeof value === 'string') {
-        dset(args, path, stringInterpolator.parse(value.toString(), resolverData));
-    } else {
-        for (const key in value) {
-            deeplySetArgs(resolverData, args, `${path}.${key}`, value[key]);
+    const resolveString = (str: string): any => {
+        return stringInterpolator.parse(str.toString(), resolverData);
+    };
+
+    const resolveAny = (val: any): any => {
+        if (val === null || val === undefined) return val;
+
+        if (typeof val === 'string') return resolveString(val);
+
+        if (Array.isArray(val)) return val.map(resolveAny);
+
+        if (typeof val === 'object') {
+            const out: Record<string, any> = {};
+            for (const key in val) {
+                out[key] = resolveAny(val[key]);
+            }
+            return out;
         }
-    }
+
+        return val;
+    };
+
+    dset(args, path, resolveAny(value));
 };
 
 export const getTypeByPath = (type: GraphQLType, path: string[]): GraphQLNamedType => {
