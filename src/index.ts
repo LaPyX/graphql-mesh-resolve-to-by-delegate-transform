@@ -290,7 +290,7 @@ export default class ResolveToByDelegateTransform implements Transform {
                                     info,
                                     env: process.env,
                                 };
-                                const targetArgs: any = { args: {} };
+                                const targetArgs: any = {};
                                 let options: any = {};
 
                                 if (resolver.args.keysArg) {
@@ -321,8 +321,8 @@ export default class ResolveToByDelegateTransform implements Transform {
                                 } else {
                                     deeplySetArgs(
                                         resolverData,
-                                        targetArgs,
-                                        'args',
+                                        { targetArgs },
+                                        'targetArgs',
                                         resolver.args.sourceArgs,
                                     );
 
@@ -366,8 +366,8 @@ export default class ResolveToByDelegateTransform implements Transform {
 
                                         deeplySetArgs(
                                             { ...resolverData, root: omptimizedRoot },
-                                            targetArgs,
-                                            'args',
+                                            { targetArgs },
+                                            'targetArgs',
                                             resolver.args.sourceArgs,
                                         );
 
